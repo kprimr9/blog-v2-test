@@ -3,6 +3,7 @@ import ContentLayout from '@/src/components/layout/ContentLayout'
 import PostFooter from '@/src/components/post/PostFooter'
 import PostMessage from '@/src/components/post/PostMessage'
 import PostNavigation from '@/src/components/post/PostNavigation'
+import { PostAttachments } from '@/src/components/post/PostAttachments'
 import CommentSection from '@/src/components/section/CommentSection'
 import type { GalleryAdBanner } from '@/src/lib/gallery/loadGalleryAdBanner'
 import { StandardAdBanner } from '@/src/themes/standard/StandardAdBanner'
@@ -38,6 +39,8 @@ export function ShopPostPage({
         <ShopProductBar post={post} />
         <PostMessage post={post} />
         <StandardPostContent postSlug={post.slug} blocks={blocks} />
+        {/* 存储基座 S3：文章附件下载区（空数据渲染 null） */}
+        <PostAttachments postSlug={post.slug} />
         {galleryAdBanner ? <StandardAdBanner banner={galleryAdBanner} /> : null}
         <PostFooter post={post} />
         <PostNavigation navigation={navigation} />

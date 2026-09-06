@@ -32,6 +32,7 @@ const MERCHANT_WRITE_PATHS = new Set<string>([
   '/api/admin/upload', // 图片上传
   '/api/admin/social-links', // 导航社交链接保存
   '/api/admin/full-redeploy', // 整站重部署(商户触发,消耗构建资源)
+  '/api/admin/attachments', // 存储基座 S3:文章附件上传/删除(GET 列表不受非 GET 拦截影响)
 ])
 
 /** 白名单(前缀匹配;命中即完全豁免只读拦截) */

@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import Head from 'next/head'; // 🟢 引入 Head 组件控制浏览器标签
 import { useRouter } from 'next/router';
 import { GalleryManager } from './GalleryManager';
+import { AttachmentManager } from './AttachmentManager';
 import { GalleryStorageBar } from './GalleryStorageBar';
 import {
   flushGalleryUploads,
@@ -10339,9 +10340,20 @@ const [mounted, setMounted] = useState(false);
                   </div>
                 </div>
              </StepAccordion>
-              {form.type !== 'Widget' ? (
-              <div style={{marginTop:'12px'}}>
-                {form.linked_product_sku ? (
+             {/* 存储基座 S3：文章附件（上传/列表/删除；读者在文章页可见下载按钮） */}
+             {form.type !== 'Widget' ? (
+             <StepAccordion step={7} title={<>附件</>} isOpen={expandedStep === 7} onToggle={()=>setExpandedStep(expandedStep===7?0:7)}>
+               <div>
+                 <p style={{fontSize:'11px', color:'#777', margin:'0 0 10px', lineHeight:1.5}}>
+                   附件与本文绑定：上传后文章页底部会显示下载按钮（文件名 + 大小 + 下载）。附件即刻生效，无需等待保存。
+                 </p>
+                 <AttachmentManager postSlug={form.slug} />
+               </div>
+             </StepAccordion>
+             ) : null}
+               {form.type !== 'Widget' ? (
+               <div style={{marginTop:'12px'}}>
+                 {form.linked_product_sku ? (
                 <div style={{marginBottom:'10px', padding:'12px 14px', borderRadius:'10px', border:'1px solid rgba(59,130,246,0.35)', background:'rgba(59,130,246,0.06)'}}>
                   <label style={{display:'block', fontSize:'11px', color:'#93c5fd', marginBottom:'6px'}}>已关联商品</label>
                   <p style={{fontSize:'12px', color:'#e5e5e5', margin:'0 0 8px', lineHeight:1.5, wordBreak:'break-all'}}>商品码：{form.linked_product_sku}</p>

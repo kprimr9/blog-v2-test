@@ -14,6 +14,7 @@ import { GalleryPostRecommendations } from './GalleryPostRecommendations'
 import { GalleryPostStats } from './GalleryPostStats'
 import { GalleryPostTitleLine } from './GalleryPostTitleDownloadMeta'
 import { ArticleProductBuyBar } from '@/src/themes/shop/ArticleProductBuyBar'
+import { PostAttachments } from '@/src/components/post/PostAttachments'
 import { galleryContentContainerClass, galleryPostTitleClass } from './galleryFonts'
 
 type GalleryPostProps = {
@@ -89,6 +90,9 @@ export const GalleryPost = ({
             <ArticleProductBuyBar post={post} variant="gallery" />
 
             <GalleryPostContent postSlug={post.slug} blocks={blocks} />
+
+            {/* 存储基座 S3：文章附件下载区（空数据渲染 null） */}
+            <PostAttachments postSlug={post.slug} />
 
             <GalleryPostRecommendations posts={bottomRecommendations} />
 

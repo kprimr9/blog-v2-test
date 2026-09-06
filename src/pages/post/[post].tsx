@@ -10,6 +10,7 @@ import { StandardGalleryPreviewProvider } from '@/src/themes/standard/StandardGa
 import { ArticlePasswordGate } from '../../components/post/ArticlePasswordGate'
 import PostMessage from '../../components/post/PostMessage'
 import PostNavigation from '../../components/post/PostNavigation'
+import { PostAttachments } from '../../components/post/PostAttachments'
 import CommentSection from '../../components/section/CommentSection'
 import { Section404 } from '../../components/section/Section404'
 import withNavFooter from '../../components/withNavFooter'
@@ -294,6 +295,8 @@ const PostPage: NextPage<{
                 postSlug={post.slug}
                 blocks={resolvedBlocks}
               />
+              {/* 存储基座 S3：文章附件下载区（空数据渲染 null，普通文章零影响） */}
+              <PostAttachments postSlug={post.slug} />
               {galleryAdBanner ? <StandardAdBanner banner={galleryAdBanner} /> : null}
               <PostFooter post={post} />
               <PostNavigation navigation={navigation} />

@@ -4,6 +4,7 @@ import { PartialPost, Post } from '@/src/types/blog'
 import { BlockResponse } from '@/src/types/notion'
 import { formatTweetDate } from './tweetSearch'
 import { ArticleProductBuyBar } from '@/src/themes/shop/ArticleProductBuyBar'
+import { PostAttachments } from '@/src/components/post/PostAttachments'
 import { TweetAdBanner } from './TweetAdBanner'
 import { TweetPostContent } from './TweetPostContent'
 import { TweetPostFooter } from './TweetPostFooter'
@@ -40,6 +41,8 @@ export function TweetPostPage({
       ) : null}
       <ArticleProductBuyBar post={post} variant="tweet" />
       <TweetPostContent postSlug={post.slug} blocks={blocks} />
+      {/* 存储基座 S3：文章附件下载区（空数据渲染 null） */}
+      <PostAttachments postSlug={post.slug} />
       {galleryAdBanner ? <TweetAdBanner banner={galleryAdBanner} /> : null}
       <TweetPostFooter previousPost={previousPost} nextPost={nextPost} />
     </article>
