@@ -47,7 +47,32 @@ export function AttachmentManager({ postSlug }) {
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 })
   const [deletingKey, setDeletingKey] = useState('')
   const [error, setError] = useState('')
+  // S3FIX：创作者存储用量（null=加载中或查询失败，降级显示「—」不阻断）
+  const [usage, setUsage] = useState(null)
   const fileInputRef = useRef(null)
+
+  const loadUsage = useCallback(async () => {
+    try {
+      const r = await fetch('/api/admin/storage-usage', { credentials: 'same-origin' })
+      const d = await r.json().catch(() => null)
+      if (r.ok && d && d.success && typeof d.usedBytes === 'number') {
+        setUsage({
+          usedBytes: d.usedBytes,
+          quotaBytes: typeof d.quotaBytes === 'number' ? d.quotaBytes : 500 * 1024 * 1024,
+          usedPct: Number(d.usedPct) || 0,
+          filesCount: Number(d.filesCount) || 0,
+        })
+      } else {
+        setUsage(null)
+      }
+    } catch {
+      setUsage(null)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadUsage()
+  }, [loadUsage])
 
   const loadList = useCallback(async () => {
     if (!slug) {
@@ -91,6 +116,11 @@ export function AttachmentManager({ postSlug }) {
       setError(`附件过大：${tooLarge.name}（单文件上限 ${MAX_UPLOAD_MB}MB）`)
       return
     }
+    // 乐观预检：已满即提示（后端配额仍强制，此处仅前端双保险）
+    if (usage && Number(usage.usedPct) >= 100) {
+      setError('存储空间已满（500MB），请删除部分文件后再上传')
+      return
+    }
 
     setUploading(true)
     setError('')
@@ -122,6 +152,7 @@ export function AttachmentManager({ postSlug }) {
       await loadList()
     } finally {
       setUploading(false)
+      loadUsage()
     }
   }
 
@@ -141,6 +172,7 @@ export function AttachmentManager({ postSlug }) {
       const d = await r.json().catch(() => ({}))
       if (!r.ok || !d.success) throw new Error(d.error || '删除失败')
       setItems((prev) => prev.filter((it) => it.key !== item.key))
+      loadUsage()
     } catch (e) {
       setError(e.message || '删除失败')
     } finally {
@@ -151,6 +183,47 @@ export function AttachmentManager({ postSlug }) {
   return (
     <div>
       <style dangerouslySetInnerHTML={{ __html: '@keyframes att-mgr-spin { to { transform: rotate(360deg); } }' }} />
+
+      {/* S3FIX：存储用量条（同源主站「我的存储」口径；灰阶无 emoji；失败显示「—」不阻断上传） */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          padding: '8px 12px',
+          borderRadius: '10px',
+          border: '1px solid #2c2c33',
+          background: '#16161a',
+          marginBottom: '8px',
+        }}
+      >
+        <span style={{ fontSize: '11px', color: '#999', whiteSpace: 'nowrap' }}>
+          存储空间：已用 {usage ? formatBytes(usage.usedBytes) : '—'} /{' '}
+          {usage ? `${Math.round(usage.quotaBytes / 1024 / 1024)} MB` : '500 MB'}
+        </span>
+        <div
+          style={{
+            flex: 1,
+            minWidth: '60px',
+            height: '6px',
+            borderRadius: '3px',
+            background: '#2a2a30',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              width: `${usage ? Math.min(100, Math.max(0, Number(usage.usedPct) || 0)) : 0}%`,
+              height: '100%',
+              background: '#6f6f78',
+              borderRadius: '3px',
+            }}
+          />
+        </div>
+        <span style={{ fontSize: '11px', color: '#777', whiteSpace: 'nowrap' }}>
+          {usage ? `${Math.round(Number(usage.usedPct) || 0)}%` : '—'}
+        </span>
+      </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
         <button
@@ -280,7 +353,7 @@ export function AttachmentManager({ postSlug }) {
                   textDecoration: 'none',
                 }}
               >
-                下载
+                下载附件
               </a>
               <button
                 type="button"

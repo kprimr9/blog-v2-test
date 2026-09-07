@@ -103,7 +103,7 @@ export function PostAttachments({ postSlug }: PostAttachmentsProps) {
               data-testid="post-attachments-download"
               className="shrink-0 rounded-xl bg-neutral-900 px-4 py-2 text-xs font-bold text-white transition-colors duration-200 ease-out hover:bg-neutral-700 dark:bg-white dark:text-black dark:hover:bg-neutral-200"
             >
-              下载
+              下载附件
             </a>
           </div>
         ))}

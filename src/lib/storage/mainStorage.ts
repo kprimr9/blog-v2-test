@@ -212,3 +212,30 @@ export async function deleteMainSiteObject(key: string): Promise<MainCallResult<
     }
   )
 }
+
+// ---------------------------------------------------------------------------
+// 存储用量(S3FIX):主站 /api/storage/usage 代理原语(附件管理用量条数据源)
+// ---------------------------------------------------------------------------
+
+export type MainSiteUsage = {
+  usedBytes: number
+  quotaBytes: number
+  usedPct: number
+  filesCount: number
+}
+
+/**
+ * 读取本站归属创作者的存储用量(与主站「我的存储」同源同口径)。
+ *
+ * - 站点身份 = BLOG_SITE_ID;缺失时返回失败(调用方按降级展示「—」,不阻断);
+ * - usedPct 为 0~∞ 百分比(可超 100,供前端画条/乐观预检);后端配额仍强制。
+ */
+export async function fetchMainSiteUsage(): Promise<MainCallResult<MainSiteUsage>> {
+  const siteId = getBlogSiteIdOrNull()
+  if (!siteId) return { ok: false, status: 500, error: '站点身份尚未配置(BLOG_SITE_ID)' }
+
+  return mainFetchJson<MainSiteUsage>(
+    `${resolveMainStorageBase()}/api/storage/usage?site_id=${siteId}`,
+    { method: 'GET' }
+  )
+}
