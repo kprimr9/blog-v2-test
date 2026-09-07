@@ -1,6 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { verifyAdminRequest } from '@/src/lib/admin/verifyAdminRequest'
 import { fetchMainSiteUsage } from '@/src/lib/storage/mainStorage'
+import { getSiteQuotaState } from '@/src/lib/blog/quotaState'
 
 // ============================================================
 // 存储基座 S3FIX · BLOG 后台「存储用量」只读代理
@@ -12,6 +13,12 @@ import { fetchMainSiteUsage } from '@/src/lib/storage/mainStorage'
 //
 //   GET → 主站 /api/storage/usage?site_id={BLOG_SITE_ID}
 //        → { success, usedBytes, quotaBytes, usedPct, filesCount, frozen }
+//
+// Q-FIX(2026-09-07)分域归一：响应并入共用库 blog_quota_state 的创作者级
+// 容量口径（storagePct = 名下所有站图库 + B2 空间 vs 存储配额；
+// storageStatus = normal|warning|full）——「空间容量」bar 以此为唯一容量
+// 展示；usedBytes/quotaBytes/usedPct（B2 明细与上传 API 强制口径）继续
+// 透传不变。quota state 读取失败时两字段为 null，前端降级 B2 口径展示。
 //
 // 调用方（附件管理用量条）对失败一律降级显示「—」，不阻断上传——
 // 配额由主站后端强制（前端仅乐观预检）。
@@ -25,6 +32,10 @@ type StorageUsageResponse = {
   filesCount?: number
   /** S4-1/S4-3：账号级冻结态透传（主站返回；前端灰条+红字与上传禁用提示）。 */
   frozen?: boolean
+  /** Q-FIX：创作者级合并容量占比（gallery+B2 vs 存储配额；null=未计算/不可用）。 */
+  storagePct?: number | null
+  /** Q-FIX：容量域状态 normal|warning|full（仅展示提示；null=未计算/不可用）。 */
+  storageStatus?: string | null
   error?: string
 }
 
@@ -48,5 +59,21 @@ export default async function handler(
     return res.status(result.status).json({ success: false, error: result.error })
   }
 
-  return res.status(200).json({ success: true, ...result.data })
+  // Q-FIX：创作者级容量口径 best-effort（共用库抖动时置 null，不阻断用量条）
+  let storagePct: number | null = null
+  let storageStatus: string | null = null
+  try {
+    const quotaState = await getSiteQuotaState()
+    storagePct = quotaState.storagePct
+    storageStatus = quotaState.storageStatus
+  } catch (e) {
+    console.warn(
+      '/api/admin/storage-usage quota state unavailable:',
+      e?.message || e
+    )
+  }
+
+  return res
+    .status(200)
+    .json({ success: true, ...result.data, storagePct, storageStatus })
 }

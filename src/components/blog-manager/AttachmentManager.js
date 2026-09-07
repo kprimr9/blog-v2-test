@@ -66,6 +66,12 @@ export function AttachmentManager({ postSlug }) {
           usedPct: Number(d.usedPct) || 0,
           filesCount: Number(d.filesCount) || 0,
           frozen: d.frozen === true,
+          // Q-FIX：创作者级合并容量口径（含名下图库+B2 空间；null=未计算，降级 B2 口径展示）
+          storagePct: typeof d.storagePct === 'number' ? Number(d.storagePct) : null,
+          storageStatus:
+            d.storageStatus === 'warning' || d.storageStatus === 'full'
+              ? d.storageStatus
+              : 'normal',
         })
       } else {
         setUsage(null)
@@ -196,12 +202,32 @@ export function AttachmentManager({ postSlug }) {
   const frozen = !!(usage && usage.frozen)
   const uploadDisabled = uploading || !slug || frozen
 
+  // Q-FIX：唯一容量展示 = 创作者级合并容量占比（gallery+B2 vs 存储配额，
+  // 来自 blog_quota_state.storage_pct）；未计算时降级 B2 明细（usedPct）。
+  const capacityPct =
+    usage && usage.storagePct !== null && usage.storagePct !== undefined
+      ? Math.min(100, Math.max(0, Number(usage.storagePct) || 0))
+      : usage
+        ? Math.min(100, Math.max(0, Number(usage.usedPct) || 0))
+        : 0
+  const capacityIsCreatorLevel = !!(usage && usage.storagePct !== null && usage.storagePct !== undefined)
+  const storageStatus = usage ? usage.storageStatus || 'normal' : 'normal'
+  const capacityBarColor = frozen
+    ? '#4d4d55'
+    : storageStatus === 'full'
+      ? '#ff6b6b'
+      : storageStatus === 'warning'
+        ? '#f5a623'
+        : '#6f6f78'
+
   return (
     <div>
       <style dangerouslySetInnerHTML={{ __html: '@keyframes att-mgr-spin { to { transform: rotate(360deg); } }' }} />
 
-      {/* S3FIX/S4-3：空间容量条（同源主站「我的存储」口径；灰阶无 emoji；失败显示「—」不阻断上传；
-          frozen=true → 灰条 + 红字「已冻结」；配额随 quotaBytes，缺省「—」） */}
+      {/* S3FIX/S4-3/Q-FIX：空间容量条 —— 唯一容量展示（创作者级合并口径 =
+          名下图库 + B2 空间 vs 存储配额；来自共用库 storage_pct；未计算时降级
+          B2 明细 usedBytes/quotaBytes）。灰阶无 emoji；失败显示「—」不阻断上传；
+          frozen=true → 灰条 + 红字「已冻结」；容量 >=70% 黄 / >=100% 红（Q-FIX 阈值） */}
       <div
         style={{
           display: 'flex',
@@ -215,8 +241,12 @@ export function AttachmentManager({ postSlug }) {
         }}
       >
         <span style={{ fontSize: '11px', color: '#999', whiteSpace: 'nowrap' }}>
-          空间容量：已用 {usage ? formatBytes(usage.usedBytes) : '—'} /{' '}
-          {usage && usage.quotaBytes ? formatBytes(usage.quotaBytes) : '—'}
+          空间容量：已用{' '}
+          {capacityIsCreatorLevel
+            ? `${Math.round(capacityPct)}%（账号级）`
+            : usage
+              ? `${formatBytes(usage.usedBytes)} / ${usage && usage.quotaBytes ? formatBytes(usage.quotaBytes) : '—'}`
+              : '—'}
         </span>
         <div
           style={{
@@ -230,19 +260,27 @@ export function AttachmentManager({ postSlug }) {
         >
           <div
             style={{
-              width: `${usage ? Math.min(100, Math.max(0, Number(usage.usedPct) || 0)) : 0}%`,
+              width: `${usage ? capacityPct : 0}%`,
               height: '100%',
-              background: frozen ? '#4d4d55' : '#6f6f78',
+              background: capacityBarColor,
               borderRadius: '3px',
             }}
           />
         </div>
         <span style={{ fontSize: '11px', color: '#777', whiteSpace: 'nowrap' }}>
-          {usage ? `${Math.round(Number(usage.usedPct) || 0)}%` : '—'}
+          {usage ? `${Math.round(capacityPct)}%` : '—'}
         </span>
         {frozen ? (
           <span style={{ fontSize: '11px', color: '#ff6b6b', whiteSpace: 'nowrap', fontWeight: 'bold' }}>
             已冻结
+          </span>
+        ) : storageStatus === 'full' ? (
+          <span style={{ fontSize: '11px', color: '#ff6b6b', whiteSpace: 'nowrap' }}>
+            已满，清理或升级后可恢复
+          </span>
+        ) : storageStatus === 'warning' ? (
+          <span style={{ fontSize: '11px', color: '#f5a623', whiteSpace: 'nowrap' }}>
+            即将用尽
           </span>
         ) : null}
       </div>

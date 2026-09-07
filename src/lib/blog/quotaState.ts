@@ -10,6 +10,8 @@ import { getBlogSiteIdOrNull } from '@/src/lib/gallery/blogSite'
 
 export type SiteQuotaPlan = 'free' | 'pro'
 export type SiteQuotaStatus = 'normal' | 'warning' | 'read_only' | 'paused'
+/** Q-FIX 容量域状态(仅展示/提示;不驱动只读拦截——那是流量域 read_only 专属) */
+export type SiteStorageStatus = 'normal' | 'warning' | 'full'
 
 export type SiteQuotaState = {
   plan: SiteQuotaPlan
@@ -20,6 +22,10 @@ export type SiteQuotaState = {
   galleryPct: number
   /** P8:去除平台角标(仅专业版可开启;渲染需 brandClean && plan=pro) */
   brandClean: boolean
+  /** Q-FIX:创作者级合并容量占比(gallery+storage_objects vs 存储配额;null=未计算/020 未执行) */
+  storagePct: number | null
+  /** Q-FIX:容量域状态(normal|warning|full;null=未计算) */
+  storageStatus: SiteStorageStatus | null
 }
 
 export const DEFAULT_SITE_QUOTA_STATE: SiteQuotaState = {
@@ -30,6 +36,8 @@ export const DEFAULT_SITE_QUOTA_STATE: SiteQuotaState = {
   bwPct: 0,
   galleryPct: 0,
   brandClean: false,
+  storagePct: null,
+  storageStatus: null,
 }
 
 const QUOTA_STATE_CACHE_MS = 30_000
@@ -46,6 +54,21 @@ function normalizePct(value: unknown): number {
   return Math.min(999, Math.round(n * 100) / 100)
 }
 
+/** Q-FIX:容量域占比(null 保留,表示尚未计算;数值安全截到 0-999) */
+function normalizeStoragePct(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null
+  const n = Number(value)
+  if (!Number.isFinite(n) || n < 0) return null
+  return Math.min(999, Math.round(n * 100) / 100)
+}
+
+function normalizeStorageStatus(value: unknown): SiteStorageStatus | null {
+  const status = String(value || '')
+  return ['normal', 'warning', 'full'].includes(status)
+    ? (status as SiteStorageStatus)
+    : null
+}
+
 function normalizeRow(row: Record<string, unknown>): SiteQuotaState {
   const status = String(row.status || '')
   return {
@@ -58,6 +81,8 @@ function normalizeRow(row: Record<string, unknown>): SiteQuotaState {
     bwPct: normalizePct(row.bw_pct),
     galleryPct: normalizePct(row.gallery_pct),
     brandClean: row.brand_clean === true,
+    storagePct: normalizeStoragePct(row.storage_pct),
+    storageStatus: normalizeStorageStatus(row.storage_status),
   }
 }
 
@@ -68,25 +93,40 @@ async function fetchSiteQuotaStateRaw(
 ): Promise<SiteQuotaState> {
   let value = DEFAULT_SITE_QUOTA_STATE
   let readFailed = false
+  // 降级重读的 select 列集不同,统一按宽松行类型接住(缺失列经 normalizeRow 视为默认值)
+  let data: Record<string, unknown> | null = null
+  let error: { message?: string } | null = null
   try {
-    let { data, error } = await supabase
+    const full = await supabase
       .from('blog_quota_state')
-      .select('plan, read_only, status, pv_pct, bw_pct, gallery_pct, brand_clean')
+      .select('plan, read_only, status, pv_pct, bw_pct, gallery_pct, brand_clean, storage_pct, storage_status')
       .eq('site_id', siteId)
       .maybeSingle()
-    // P8 兼容:共用库 017 未执行时降级为旧列读取(brand_clean 视为 false),
-    // 避免 select 报错导致 pro 站点被整体降级为 free。
+    data = (full.data ?? null) as Record<string, unknown> | null
+    error = full.error ?? null
+    // Q-FIX 兼容:共用库 020(storage_pct/storage_status)未执行时降级为旧列读取
+    // (容量域字段按 null 处理),避免 select 报错导致 pro 站点被整体降级为 free。
+    if (error && /storage_pct|storage_status/i.test(error.message || '')) {
+      const legacy = await supabase
+        .from('blog_quota_state')
+        .select('plan, read_only, status, pv_pct, bw_pct, gallery_pct, brand_clean')
+        .eq('site_id', siteId)
+        .maybeSingle()
+      data = (legacy.data ?? null) as Record<string, unknown> | null
+      error = legacy.error ?? null
+    }
+    // P8 兼容:共用库 017(brand_clean)也未执行时再降级(brand_clean 视为 false)。
     if (error && /brand_clean/i.test(error.message || '')) {
       const legacy = await supabase
         .from('blog_quota_state')
         .select('plan, read_only, status, pv_pct, bw_pct, gallery_pct')
         .eq('site_id', siteId)
         .maybeSingle()
-      data = legacy.data
-      error = legacy.error
+      data = (legacy.data ?? null) as Record<string, unknown> | null
+      error = legacy.error ?? null
     }
     if (!error && data) {
-      value = normalizeRow(data as Record<string, unknown>)
+      value = normalizeRow(data)
       quotaStateLastKnown = value
     } else if (error) {
       readFailed = true

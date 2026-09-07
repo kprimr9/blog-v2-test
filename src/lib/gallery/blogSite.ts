@@ -30,7 +30,35 @@ export function isGalleryTenantConfigured(): boolean {
   return isSupabaseGalleryConfigured() && Boolean(getBlogSiteIdOrNull())
 }
 
-/** 每商户图库容量上限（字节），默认 GALLERY_QUOTA_GB=50 */
+/** 图库配额（GB）与会员计划的关系（P2-A 修：免费 5GB / 专业版 50GB，
+ * 与平台 PLAN_LIMITS.galleryGb 及 /admin/blogs/pause 判定常量一致）。 */
+export const GALLERY_QUOTA_GB_FREE = 5
+export const GALLERY_QUOTA_GB_PRO = 50
+
+export function getGalleryQuotaGbForPlan(plan: 'free' | 'pro'): number {
+  return plan === 'pro' ? GALLERY_QUOTA_GB_PRO : GALLERY_QUOTA_GB_FREE
+}
+
+/**
+ * 每商户图库容量上限（字节）。
+ * P2-A 修（Q-FIX）：显式 env 覆盖（GALLERY_QUOTA_GB，运维逐站扩容用）优先；
+ * 未配置时按会员计划走 free 5GB / pro 50GB（此前默认一律 50GB，
+ * 免费站形同失效）。plan 判定由调用方传入（galleryStorage.resolveGalleryQuotaBytes
+ * 读共用库 blog_quota_state，读取失败按 free 安全侧兜底）。
+ */
+export function getGalleryQuotaBytesForPlan(plan: 'free' | 'pro'): number {
+  const raw = process.env.GALLERY_QUOTA_GB?.trim()
+  if (raw) {
+    const gb = parseFloat(raw)
+    if (Number.isFinite(gb) && gb > 0) {
+      return gb * 1024 * 1024 * 1024
+    }
+  }
+  return getGalleryQuotaGbForPlan(plan) * 1024 * 1024 * 1024
+}
+
+/** @deprecated 旧口径：env 缺省时一律 50GB。仅为兼容残留调用保留；
+ * 新调用一律走 galleryStorage.resolveGalleryQuotaBytes（plan 感知）。 */
 export function getGalleryQuotaBytes(): number {
   const raw = process.env.GALLERY_QUOTA_GB?.trim()
   const gb = raw ? parseFloat(raw) : 50

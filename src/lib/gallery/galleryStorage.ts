@@ -1,11 +1,12 @@
 import {
   formatGalleryStorageBytes,
   getBlogSiteId,
-  getGalleryQuotaBytes,
+  getGalleryQuotaBytesForPlan,
 } from '@/src/lib/gallery/blogSite'
 import { getSupabaseAdmin } from '@/src/lib/supabase/admin'
+import { getSiteQuotaState } from '@/src/lib/blog/quotaState'
 
-export { formatGalleryStorageBytes, getGalleryQuotaBytes }
+export { formatGalleryStorageBytes }
 
 export type GalleryStorageStats = {
   usedBytes: number
@@ -13,6 +14,21 @@ export type GalleryStorageStats = {
   usedPercent: number
   imageCount: number
   remainingBytes: number
+}
+
+/**
+ * P2-A 修（Q-FIX）：plan 感知图库配额（字节）。
+ * env 显式覆盖（GALLERY_QUOTA_GB）优先；否则按共用库 plan 走 free 5GB / pro 50GB。
+ * quota state 读取失败按 free 兜底（安全侧；30s 短缓存 + last-known-good）。
+ */
+export async function resolveGalleryQuotaBytes(): Promise<number> {
+  let plan: 'free' | 'pro' = 'free'
+  try {
+    plan = (await getSiteQuotaState()).plan
+  } catch {
+    plan = 'free'
+  }
+  return getGalleryQuotaBytesForPlan(plan)
 }
 
 export async function getTotalGalleryStorageBytes(): Promise<number> {
@@ -76,11 +92,11 @@ export async function countGalleryStorageImages(): Promise<number> {
 }
 
 export async function getGalleryStorageStats(): Promise<GalleryStorageStats> {
-  const [usedBytes, imageCount] = await Promise.all([
+  const [usedBytes, imageCount, quotaBytes] = await Promise.all([
     getTotalGalleryStorageBytes(),
     countGalleryStorageImages(),
+    resolveGalleryQuotaBytes(),
   ])
-  const quotaBytes = getGalleryQuotaBytes()
   const usedPercent =
     quotaBytes > 0 ? Math.min(100, (usedBytes / quotaBytes) * 100) : 0
   return {
@@ -104,7 +120,7 @@ export async function assertGalleryStorageQuota(input: {
   images: { url: string; file_size?: number | null }[]
 }): Promise<void> {
   const slug = input.postSlug.trim()
-  const quotaBytes = getGalleryQuotaBytes()
+  const quotaBytes = await resolveGalleryQuotaBytes()
   const siteUsed = await getTotalGalleryStorageBytes()
   const thisGalleryUsed = slug ? await getGalleryStorageBytesBySlug(slug) : 0
 
@@ -128,7 +144,7 @@ export async function canAddGalleryPendingBytes(
   pendingBytes: number
 ): Promise<{ ok: boolean; usedBytes: number; quotaBytes: number; message?: string }> {
   const usedBytes = await getTotalGalleryStorageBytes()
-  const quotaBytes = getGalleryQuotaBytes()
+  const quotaBytes = await resolveGalleryQuotaBytes()
   const add = Math.max(0, Number(pendingBytes) || 0)
   if (usedBytes + add <= quotaBytes) {
     return { ok: true, usedBytes, quotaBytes }

@@ -2,7 +2,7 @@ import { isGalleryTenantConfigured } from '@/src/lib/gallery/blogSite'
 import {
   canAddGalleryPendingBytes,
   formatGalleryStorageBytes,
-  getGalleryQuotaBytes,
+  resolveGalleryQuotaBytes,
   getGalleryStorageStats,
 } from '@/src/lib/gallery/galleryStorage'
 import { getSiteQuotaState } from '@/src/lib/blog/quotaState'
@@ -42,17 +42,23 @@ export default async function handler(req, res) {
         pvPct: state.pvPct,
         bwPct: state.bwPct,
         galleryPct: state.galleryPct,
+        // Q-FIX:创作者级合并容量口径(唯一容量展示;null=未计算)
+        storagePct: state.storagePct,
+        storageStatus: state.storageStatus,
       }
     } catch (e) {
       console.warn('/api/admin/gallery-storage quota state unavailable:', e?.message || e)
     }
+
+    // P2-A 修:quotaLabel 走 plan 感知配额(env 覆盖优先,否则 free 5GB / pro 50GB)
+    const quotaBytesForLabel = await resolveGalleryQuotaBytes()
 
     return res.status(200).json({
       success: true,
       configured: true,
       ...stats,
       quota,
-      quotaLabel: formatGalleryStorageBytes(getGalleryQuotaBytes()),
+      quotaLabel: formatGalleryStorageBytes(quotaBytesForLabel),
       usedLabel: formatGalleryStorageBytes(stats.usedBytes),
       remainingLabel: formatGalleryStorageBytes(stats.remainingBytes),
       canUpload: check ? check.ok : stats.remainingBytes > 0,
