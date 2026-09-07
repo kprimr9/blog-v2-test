@@ -11,7 +11,7 @@ import { fetchMainSiteUsage } from '@/src/lib/storage/mainStorage'
 // read_only 模式下用量条仍可展示）。
 //
 //   GET → 主站 /api/storage/usage?site_id={BLOG_SITE_ID}
-//        → { success, usedBytes, quotaBytes, usedPct, filesCount }
+//        → { success, usedBytes, quotaBytes, usedPct, filesCount, frozen }
 //
 // 调用方（附件管理用量条）对失败一律降级显示「—」，不阻断上传——
 // 配额由主站后端强制（前端仅乐观预检）。
@@ -23,6 +23,8 @@ type StorageUsageResponse = {
   quotaBytes?: number
   usedPct?: number
   filesCount?: number
+  /** S4-1/S4-3：账号级冻结态透传（主站返回；前端灰条+红字与上传禁用提示）。 */
+  frozen?: boolean
   error?: string
 }
 

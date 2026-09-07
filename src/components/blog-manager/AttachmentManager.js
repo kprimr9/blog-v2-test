@@ -8,7 +8,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 // - 附件立即上传（不随「保存」延迟）——按文章 slug（post_key）挂载，
 //   新建文章的 slug 在创建时已自动生成，无空窗；
 // - 删除=主站软删（幂等）；列表自动刷新；
-// - 视觉对齐 BLOG 后台暗色系（无 emoji 灰阶）。
+// - 视觉对齐 BLOG 后台暗色系（无 emoji 灰阶）；
+// - S4-3：用量条文案「空间容量」；配额展示随 quotaBytes（缺省显示「—」，
+//   不再硬编码 500MB）；frozen=true（账号级冻结，只禁上传）→ bar 灰态 +
+//   红字「已冻结」+ 上传禁用并提示「空间已冻结，请联系平台」（后端 403 兜底）。
 // ============================================================
 
 const ATTACHMENT_EXT_RE = /\.(pdf|zip|rar|7z|doc|docx|xls|xlsx|txt)$/i
@@ -48,6 +51,7 @@ export function AttachmentManager({ postSlug }) {
   const [deletingKey, setDeletingKey] = useState('')
   const [error, setError] = useState('')
   // S3FIX：创作者存储用量（null=加载中或查询失败，降级显示「—」不阻断）
+  // S4-3：quotaBytes 透传（无值时存 null，展示回退「—」）；frozen 透传冻结态
   const [usage, setUsage] = useState(null)
   const fileInputRef = useRef(null)
 
@@ -58,9 +62,10 @@ export function AttachmentManager({ postSlug }) {
       if (r.ok && d && d.success && typeof d.usedBytes === 'number') {
         setUsage({
           usedBytes: d.usedBytes,
-          quotaBytes: typeof d.quotaBytes === 'number' ? d.quotaBytes : 500 * 1024 * 1024,
+          quotaBytes: typeof d.quotaBytes === 'number' ? d.quotaBytes : null,
           usedPct: Number(d.usedPct) || 0,
           filesCount: Number(d.filesCount) || 0,
+          frozen: d.frozen === true,
         })
       } else {
         setUsage(null)
@@ -105,6 +110,11 @@ export function AttachmentManager({ postSlug }) {
       setError('文章尚未初始化，请先填写标题后再上传附件')
       return
     }
+    // S4-3：冻结前置提示（账号级冻结只禁上传；后端 403 兜底，此处仅前端双保险）
+    if (usage && usage.frozen) {
+      setError('空间已冻结，请联系平台')
+      return
+    }
 
     const invalid = files.find((f) => !ATTACHMENT_EXT_RE.test(f.name || ''))
     if (invalid) {
@@ -116,9 +126,11 @@ export function AttachmentManager({ postSlug }) {
       setError(`附件过大：${tooLarge.name}（单文件上限 ${MAX_UPLOAD_MB}MB）`)
       return
     }
-    // 乐观预检：已满即提示（后端配额仍强制，此处仅前端双保险）
+    // 乐观预检：已满即提示（后端配额仍强制，此处仅前端双保险；
+    // S4-3：配额随 quotaBytes 参数化，无值时不带容量数字）
     if (usage && Number(usage.usedPct) >= 100) {
-      setError('存储空间已满（500MB），请删除部分文件后再上传')
+      const quotaText = usage.quotaBytes ? `（${formatBytes(usage.quotaBytes)}）` : ''
+      setError(`存储空间已满${quotaText}，请删除部分文件后再上传`)
       return
     }
 
@@ -180,11 +192,16 @@ export function AttachmentManager({ postSlug }) {
     }
   }
 
+  // S4-3：冻结态派生（usage 为 null=查询失败/加载中时按未冻结，后端 403 兜底）
+  const frozen = !!(usage && usage.frozen)
+  const uploadDisabled = uploading || !slug || frozen
+
   return (
     <div>
       <style dangerouslySetInnerHTML={{ __html: '@keyframes att-mgr-spin { to { transform: rotate(360deg); } }' }} />
 
-      {/* S3FIX：存储用量条（同源主站「我的存储」口径；灰阶无 emoji；失败显示「—」不阻断上传） */}
+      {/* S3FIX/S4-3：空间容量条（同源主站「我的存储」口径；灰阶无 emoji；失败显示「—」不阻断上传；
+          frozen=true → 灰条 + 红字「已冻结」；配额随 quotaBytes，缺省「—」） */}
       <div
         style={{
           display: 'flex',
@@ -198,8 +215,8 @@ export function AttachmentManager({ postSlug }) {
         }}
       >
         <span style={{ fontSize: '11px', color: '#999', whiteSpace: 'nowrap' }}>
-          存储空间：已用 {usage ? formatBytes(usage.usedBytes) : '—'} /{' '}
-          {usage ? `${Math.round(usage.quotaBytes / 1024 / 1024)} MB` : '500 MB'}
+          空间容量：已用 {usage ? formatBytes(usage.usedBytes) : '—'} /{' '}
+          {usage && usage.quotaBytes ? formatBytes(usage.quotaBytes) : '—'}
         </span>
         <div
           style={{
@@ -215,7 +232,7 @@ export function AttachmentManager({ postSlug }) {
             style={{
               width: `${usage ? Math.min(100, Math.max(0, Number(usage.usedPct) || 0)) : 0}%`,
               height: '100%',
-              background: '#6f6f78',
+              background: frozen ? '#4d4d55' : '#6f6f78',
               borderRadius: '3px',
             }}
           />
@@ -223,32 +240,39 @@ export function AttachmentManager({ postSlug }) {
         <span style={{ fontSize: '11px', color: '#777', whiteSpace: 'nowrap' }}>
           {usage ? `${Math.round(Number(usage.usedPct) || 0)}%` : '—'}
         </span>
+        {frozen ? (
+          <span style={{ fontSize: '11px', color: '#ff6b6b', whiteSpace: 'nowrap', fontWeight: 'bold' }}>
+            已冻结
+          </span>
+        ) : null}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
         <button
           type="button"
           onClick={() => fileInputRef.current && fileInputRef.current.click()}
-          disabled={uploading || !slug}
+          disabled={uploadDisabled}
           style={{
             height: '34px',
             padding: '0 16px',
             borderRadius: '8px',
-            cursor: uploading || !slug ? 'not-allowed' : 'pointer',
+            cursor: uploadDisabled ? 'not-allowed' : 'pointer',
             border: '1px solid rgba(173,255,47,0.45)',
-            background: uploading || !slug ? '#2a2a2e' : '#303030',
-            color: uploading || !slug ? '#777' : 'greenyellow',
+            background: uploadDisabled ? '#2a2a2e' : '#303030',
+            color: uploadDisabled ? '#777' : 'greenyellow',
             fontSize: '12px',
             fontWeight: 'bold',
-            opacity: uploading || !slug ? 0.7 : 1,
+            opacity: uploadDisabled ? 0.7 : 1,
           }}
         >
           上传附件
         </button>
-        <span style={{ fontSize: '11px', color: '#777', lineHeight: 1.5 }}>
-          {uploading
-            ? `正在上传 ${uploadProgress.done}/${uploadProgress.total}…`
-            : '支持 pdf / zip / rar / 7z / doc / docx / xls / xlsx / txt，单文件 ≤ 50MB'}
+        <span style={{ fontSize: '11px', color: frozen ? '#ff6b6b' : '#777', lineHeight: 1.5 }}>
+          {frozen
+            ? '空间已冻结，请联系平台'
+            : uploading
+              ? `正在上传 ${uploadProgress.done}/${uploadProgress.total}…`
+              : '支持 pdf / zip / rar / 7z / doc / docx / xls / xlsx / txt，单文件 ≤ 50MB'}
         </span>
         <input
           ref={fileInputRef}

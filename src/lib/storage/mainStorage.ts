@@ -222,13 +222,17 @@ export type MainSiteUsage = {
   quotaBytes: number
   usedPct: number
   filesCount: number
+  /** S4-1 主站 API 已返回：账号级冻结态（storage_frozen_at 非空；只禁上传不禁读）。 */
+  frozen: boolean
 }
 
 /**
  * 读取本站归属创作者的存储用量(与主站「我的存储」同源同口径)。
  *
  * - 站点身份 = BLOG_SITE_ID;缺失时返回失败(调用方按降级展示「—」,不阻断);
- * - usedPct 为 0~∞ 百分比(可超 100,供前端画条/乐观预检);后端配额仍强制。
+ * - usedPct 为 0~∞ 百分比(可超 100,供前端画条/乐观预检);后端配额仍强制;
+ * - quotaBytes/frozen 随主站 S4-1 透传(配额 plan 感知;frozen=true 上传会被
+ *   主站 403 拒绝,前端仅提示与禁用)。
  */
 export async function fetchMainSiteUsage(): Promise<MainCallResult<MainSiteUsage>> {
   const siteId = getBlogSiteIdOrNull()
