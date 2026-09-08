@@ -93,7 +93,9 @@ const CONFIG: BlogConfig = {
   NOTION_PAGE_ID: process.env.NOTION_PAGE_ID || process.env.NOTION_DATABASE_ID || '',
   
   NOTION_SITE_NAME: 'anzifan',
-  NEXT_REVALIDATE_SECONDS: Number(process.env.NEXT_REVALIDATE_SECONDS) || 3600,
+  // ISR 自然过期兜底 TTL（默认 21600 = 6h）。后台保存/发布走 on-demand revalidate 即时更新，
+  // 此值仅决定无人访问变更时的最长陈旧窗口；生产 env 显式设置时以 env 为准。
+  NEXT_REVALIDATE_SECONDS: Number(process.env.NEXT_REVALIDATE_SECONDS) || 21600,
   FORCE_UPDATE_TIME: 1620000000000,
   DEFAULT_POST_COVER:
     'https://img.x1file.top/disk_r/2026/05/31/6a1bf12f468b6.jpg',

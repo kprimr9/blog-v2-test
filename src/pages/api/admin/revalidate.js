@@ -301,8 +301,15 @@ export default async function handler(req, res) {
         paths = await collectThemePostRevalidatePaths()
       } else if (listScope === 'download-instructions') {
         paths = await collectDownloadInstructionsRevalidatePaths()
-      } else if (listScope === 'gallery-ad' || listScope === 'vending' || listScope === 'announcement-popup' || listScope === 'popup-ad' || listScope === 'click-ad' || listScope === 'social-links') {
+      } else if (listScope === 'gallery-ad' || listScope === 'vending' || listScope === 'announcement-popup') {
+        // 全站渲染面：gallery-ad 全主题文章内页+下载页；vending/公告弹窗经 withNavFooter 壳层在全部公开页面生效
         paths = await collectGalleryAdRevalidatePaths()
+      } else if (listScope === 'popup-ad' || listScope === 'click-ad') {
+        // 仅首页渲染（SitePopups 内 isHomePage 守卫，非首页不展示）
+        paths = ['/']
+      } else if (listScope === 'social-links') {
+        // 壳层渲染面（gallery 侧栏/tweet Contact/shop Footer/首页 Profile），与 nav/footer 刷新口径一致
+        paths = await collectShellWithCustomPagePaths()
       } else if (listScope === 'banner') {
         // P18-C4-1: Banner 仅 shop 首页顶部渲染
         paths = ['/']
@@ -328,8 +335,15 @@ export default async function handler(req, res) {
       paths = await collectSiteConfigRevalidatePaths()
     } else if (scope === 'shell') {
       paths = await collectShellWithCustomPagePaths()
-    } else if (scope === 'gallery-ad' || scope === 'vending' || scope === 'announcement-popup' || scope === 'popup-ad' || scope === 'click-ad' || scope === 'social-links') {
+    } else if (scope === 'gallery-ad' || scope === 'vending' || scope === 'announcement-popup') {
+      // 全站渲染面：gallery-ad 全主题文章内页+下载页；vending/公告弹窗经 withNavFooter 壳层在全部公开页面生效
       paths = await collectGalleryAdRevalidatePaths()
+    } else if (scope === 'popup-ad' || scope === 'click-ad') {
+      // 仅首页渲染（SitePopups 内 isHomePage 守卫，非首页不展示）
+      paths = ['/']
+    } else if (scope === 'social-links') {
+      // 壳层渲染面（gallery 侧栏/tweet Contact/shop Footer/首页 Profile），与 nav/footer 刷新口径一致
+      paths = await collectShellWithCustomPagePaths()
     } else if (scope === 'banner') {
       // P18-C4-1: Banner 仅 shop 首页顶部渲染
       paths = ['/']
