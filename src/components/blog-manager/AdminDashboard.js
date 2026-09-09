@@ -10340,17 +10340,12 @@ const [mounted, setMounted] = useState(false);
                   </div>
                 </div>
              </StepAccordion>
-             {/* 存储基座 S3：文章附件（上传/列表/删除；读者在文章页可见下载按钮） */}
-             {form.type !== 'Widget' ? (
-             <StepAccordion step={7} title={<>附件</>} isOpen={expandedStep === 7} onToggle={()=>setExpandedStep(expandedStep===7?0:7)}>
-               <div>
-                 <p style={{fontSize:'11px', color:'#777', margin:'0 0 10px', lineHeight:1.5}}>
-                   附件与本文绑定：上传后文章页底部会显示下载按钮（文件名 + 大小 + 下载）。附件即刻生效，无需等待保存。
-                 </p>
-                 <AttachmentManager postSlug={form.slug} />
-               </div>
-             </StepAccordion>
-             ) : null}
+              {/* 存储基座 S3：文章附件（上传/列表/删除；读者在文章页可见下载按钮） */}
+              {form.type !== 'Widget' ? (
+              <StepAccordion step={7} title={<>附件</>} isOpen={expandedStep === 7} onToggle={()=>setExpandedStep(expandedStep===7?0:7)}>
+                <AttachmentManager postSlug={form.slug} />
+              </StepAccordion>
+              ) : null}
                {form.type !== 'Widget' ? (
                <div style={{marginTop:'12px'}}>
                  {form.linked_product_sku ? (

@@ -160,5 +160,12 @@ export async function flushGalleryUploads({
   await persistGalleryImages({ slug, postTitle, postNotionId, images })
   revokePendingGalleryItems(list)
 
-  return images.map((img) => remoteFromApiImage(img))
+  // BLOG-UI-FIX 封面修复：保留输入项的 isCover 手动封面标记。
+  // 此前恒经 remoteFromApiImage 置 false：pending 图库上传后标记丢失 →
+  // 发布时图库封面解析为空 → 服务端兜底误用正文首图，重开编辑重设才生效。
+  return images.map((img, index) => {
+    const item = remoteFromApiImage(img)
+    item.isCover = !!(list[index] && list[index].isCover)
+    return item
+  })
 }

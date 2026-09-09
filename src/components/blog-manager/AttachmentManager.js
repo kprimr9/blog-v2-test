@@ -9,9 +9,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 //   新建文章的 slug 在创建时已自动生成，无空窗；
 // - 删除=主站软删（幂等）；列表自动刷新；
 // - 视觉对齐 BLOG 后台暗色系（无 emoji 灰阶）；
-// - S4-3：用量条文案「空间容量」；配额展示随 quotaBytes（缺省显示「—」，
-//   不再硬编码 500MB）；frozen=true（账号级冻结，只禁上传）→ bar 灰态 +
-//   红字「已冻结」+ 上传禁用并提示「空间已冻结，请联系平台」（后端 403 兜底）。
+// - BLOG-UI-FIX：按用户要求移除「空间容量」用量条与「暂无附件」「附件与本文绑定」
+//   说明文案，格式提示只留「单文件 ≤ 50MB」；usage 查询保留（仅用于冻结/满载
+//   上传前置预检，不再渲染容量 UI）；
+// - BLOG-UI-FIX：上传改 XHR（upload.onprogress），转圈改为百分比进度条（0-100%）。
 // ============================================================
 
 const ATTACHMENT_EXT_RE = /\.(pdf|zip|rar|7z|doc|docx|xls|xlsx|txt)$/i
@@ -41,13 +42,50 @@ function formatTime(iso) {
   }
 }
 
+// BLOG-UI-FIX：fetch 无法获取上传进度，改用 XHR（upload.onprogress 回调 0-100）
+function uploadAttachmentWithProgress({ file, slug, onPercent }) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open(
+      'POST',
+      `/api/admin/attachments?slug=${encodeURIComponent(slug)}`,
+      true
+    )
+    xhr.withCredentials = true
+    xhr.setRequestHeader('content-type', file.type || 'application/octet-stream')
+    xhr.setRequestHeader('x-file-name', encodeURIComponent(file.name || 'attachment'))
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && e.total > 0) {
+        onPercent(Math.min(100, Math.round((e.loaded / e.total) * 100)))
+      }
+    }
+    xhr.onload = () => {
+      let d = null
+      try {
+        d = JSON.parse(xhr.responseText || '')
+      } catch {
+        d = null
+      }
+      if (xhr.status >= 200 && xhr.status < 300 && d && d.success) {
+        resolve(d)
+      } else {
+        reject(new Error((d && d.error) || `上传失败：${file.name}`))
+      }
+    }
+    xhr.onerror = () => reject(new Error(`上传失败：${file.name}（网络错误）`))
+    xhr.onabort = () => reject(new Error(`已取消上传：${file.name}`))
+    xhr.ontimeout = () => reject(new Error(`上传超时：${file.name}`))
+    xhr.send(file)
+  })
+}
+
 export function AttachmentManager({ postSlug }) {
   const slug = (postSlug || '').trim()
 
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 })
+  const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0, percent: 0 })
   const [deletingKey, setDeletingKey] = useState('')
   const [error, setError] = useState('')
   // S3FIX：创作者存储用量（null=加载中或查询失败，降级显示「—」不阻断）
@@ -142,27 +180,27 @@ export function AttachmentManager({ postSlug }) {
 
     setUploading(true)
     setError('')
-    setUploadProgress({ done: 0, total: files.length })
+    setUploadProgress({ done: 0, total: files.length, percent: 0 })
     try {
       for (let i = 0; i < files.length; i += 1) {
         const file = files[i]
-        const r = await fetch(
-          `/api/admin/attachments?slug=${encodeURIComponent(slug)}`,
-          {
-            method: 'POST',
-            headers: {
-              'content-type': file.type || 'application/octet-stream',
-              'x-file-name': encodeURIComponent(file.name || 'attachment'),
-            },
-            body: file,
-            credentials: 'same-origin',
-          }
-        )
-        const d = await r.json().catch(() => ({}))
-        if (!r.ok || !d.success) {
-          throw new Error(d.error || `上传失败：${file.name}`)
-        }
-        setUploadProgress({ done: i + 1, total: files.length })
+        // 整体进度 = 已完成文件数 + 当前文件进度；服务器响应前封顶 99%，响应后记满
+        await uploadAttachmentWithProgress({
+          file,
+          slug,
+          onPercent: (pct) => {
+            const overall = Math.min(
+              99,
+              Math.round(((i + pct / 100) / files.length) * 100)
+            )
+            setUploadProgress({ done: i, total: files.length, percent: overall })
+          },
+        })
+        setUploadProgress({
+          done: i + 1,
+          total: files.length,
+          percent: Math.round(((i + 1) / files.length) * 100),
+        })
       }
       await loadList()
     } catch (e) {
@@ -202,89 +240,8 @@ export function AttachmentManager({ postSlug }) {
   const frozen = !!(usage && usage.frozen)
   const uploadDisabled = uploading || !slug || frozen
 
-  // Q-FIX：唯一容量展示 = 创作者级合并容量占比（gallery+B2 vs 存储配额，
-  // 来自 blog_quota_state.storage_pct）；未计算时降级 B2 明细（usedPct）。
-  const capacityPct =
-    usage && usage.storagePct !== null && usage.storagePct !== undefined
-      ? Math.min(100, Math.max(0, Number(usage.storagePct) || 0))
-      : usage
-        ? Math.min(100, Math.max(0, Number(usage.usedPct) || 0))
-        : 0
-  const capacityIsCreatorLevel = !!(usage && usage.storagePct !== null && usage.storagePct !== undefined)
-  const storageStatus = usage ? usage.storageStatus || 'normal' : 'normal'
-  const capacityBarColor = frozen
-    ? '#4d4d55'
-    : storageStatus === 'full'
-      ? '#ff6b6b'
-      : storageStatus === 'warning'
-        ? '#f5a623'
-        : '#6f6f78'
-
   return (
     <div>
-      <style dangerouslySetInnerHTML={{ __html: '@keyframes att-mgr-spin { to { transform: rotate(360deg); } }' }} />
-
-      {/* S3FIX/S4-3/Q-FIX：空间容量条 —— 唯一容量展示（创作者级合并口径 =
-          名下图库 + B2 空间 vs 存储配额；来自共用库 storage_pct；未计算时降级
-          B2 明细 usedBytes/quotaBytes）。灰阶无 emoji；失败显示「—」不阻断上传；
-          frozen=true → 灰条 + 红字「已冻结」；容量 >=70% 黄 / >=100% 红（Q-FIX 阈值） */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          padding: '8px 12px',
-          borderRadius: '10px',
-          border: '1px solid #2c2c33',
-          background: '#16161a',
-          marginBottom: '8px',
-        }}
-      >
-        <span style={{ fontSize: '11px', color: '#999', whiteSpace: 'nowrap' }}>
-          空间容量：已用{' '}
-          {capacityIsCreatorLevel
-            ? `${Math.round(capacityPct)}%（账号级）`
-            : usage
-              ? `${formatBytes(usage.usedBytes)} / ${usage && usage.quotaBytes ? formatBytes(usage.quotaBytes) : '—'}`
-              : '—'}
-        </span>
-        <div
-          style={{
-            flex: 1,
-            minWidth: '60px',
-            height: '6px',
-            borderRadius: '3px',
-            background: '#2a2a30',
-            overflow: 'hidden',
-          }}
-        >
-          <div
-            style={{
-              width: `${usage ? capacityPct : 0}%`,
-              height: '100%',
-              background: capacityBarColor,
-              borderRadius: '3px',
-            }}
-          />
-        </div>
-        <span style={{ fontSize: '11px', color: '#777', whiteSpace: 'nowrap' }}>
-          {usage ? `${Math.round(capacityPct)}%` : '—'}
-        </span>
-        {frozen ? (
-          <span style={{ fontSize: '11px', color: '#ff6b6b', whiteSpace: 'nowrap', fontWeight: 'bold' }}>
-            已冻结
-          </span>
-        ) : storageStatus === 'full' ? (
-          <span style={{ fontSize: '11px', color: '#ff6b6b', whiteSpace: 'nowrap' }}>
-            已满，清理或升级后可恢复
-          </span>
-        ) : storageStatus === 'warning' ? (
-          <span style={{ fontSize: '11px', color: '#f5a623', whiteSpace: 'nowrap' }}>
-            即将用尽
-          </span>
-        ) : null}
-      </div>
-
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
         <button
           type="button"
@@ -309,8 +266,8 @@ export function AttachmentManager({ postSlug }) {
           {frozen
             ? '空间已冻结，请联系平台'
             : uploading
-              ? `正在上传 ${uploadProgress.done}/${uploadProgress.total}…`
-              : '支持 pdf / zip / rar / 7z / doc / docx / xls / xlsx / txt，单文件 ≤ 50MB'}
+              ? `正在上传 ${uploadProgress.percent}%…`
+              : '单文件 ≤ 50MB'}
         </span>
         <input
           ref={fileInputRef}
@@ -325,30 +282,60 @@ export function AttachmentManager({ postSlug }) {
       {uploading ? (
         <div
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
             padding: '10px 12px',
             borderRadius: '10px',
             border: '1px solid #3a3a42',
             background: '#1b1b20',
-            fontSize: '12px',
-            color: '#bbb',
             marginBottom: '8px',
           }}
         >
-          <span
+          <div
             style={{
-              width: '14px',
-              height: '14px',
-              border: '2px solid rgba(173,255,47,0.25)',
-              borderTopColor: 'greenyellow',
-              borderRadius: '50%',
-              display: 'inline-block',
-              animation: 'att-mgr-spin 0.8s linear infinite',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '10px',
+              marginBottom: '6px',
             }}
-          />
-          正在上传附件（{uploadProgress.done}/{uploadProgress.total}），请勿关闭页面
+          >
+            <span style={{ fontSize: '12px', color: '#bbb' }}>
+              正在上传附件（{Math.min(uploadProgress.done + 1, uploadProgress.total)}/{uploadProgress.total}），请勿关闭页面
+            </span>
+            <span
+              data-testid="attachment-upload-percent"
+              style={{
+                fontSize: '12px',
+                color: '#ddd',
+                fontWeight: 'bold',
+                fontVariantNumeric: 'tabular-nums',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {uploadProgress.percent}%
+            </span>
+          </div>
+          <div
+            role="progressbar"
+            aria-valuenow={uploadProgress.percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            style={{
+              height: '4px',
+              borderRadius: '2px',
+              background: '#2a2a30',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              style={{
+                width: `${uploadProgress.percent}%`,
+                height: '100%',
+                background: '#8a8a92',
+                borderRadius: '2px',
+                transition: 'width 0.2s ease-out',
+              }}
+            />
+          </div>
         </div>
       ) : null}
 
@@ -360,11 +347,7 @@ export function AttachmentManager({ postSlug }) {
 
       {loading ? (
         <p style={{ fontSize: '11px', color: '#777', margin: '0 0 8px' }}>附件列表加载中…</p>
-      ) : items.length === 0 ? (
-        <p style={{ fontSize: '11px', color: '#666', margin: '0 0 8px', lineHeight: 1.5 }}>
-          暂无附件。上传后将在此文章页展示下载按钮，读者可直接下载。
-        </p>
-      ) : (
+      ) : items.length === 0 ? null : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
           {items.map((item) => (
             <div
