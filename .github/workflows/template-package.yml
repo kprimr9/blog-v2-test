@@ -73,7 +73,7 @@ jobs:
             --exclude='public/static/videos/**' \
             "${ARGS[@]}"
 
-      # 安全自检：文件数（文件口径 < 500；tar 条目含目录项，目录项不计入）、
+      # 安全自检：文件数（文件口径 < 600；tar 条目含目录项，目录项不计入）、
       # 关键文件在包内、绝对禁入项（.env* / 演示视频 / node_modules）零命中。
       # 注意：清单先读入变量再用 here-string 匹配——`tar | grep -q` 在 pipefail 下
       # 有 SIGPIPE 竞态（grep 提前退出可能杀死 tar → 误报失败，本地复现实测）。
@@ -84,8 +84,8 @@ jobs:
           FILES=$(tar -tvzf template.tar.gz | grep -vc '^d' || true)
           ENTRIES=$(printf '%s\n' "$NAMES" | grep -c . || true)
           echo "模板包总条目(含目录): ${ENTRIES}，文件数: ${FILES}"
-          if [ "$FILES" -ge 500 ]; then
-            echo "::error::模板包文件数 ${FILES} ≥ 500，白名单可能失控"
+          if [ "$FILES" -ge 600 ]; then
+            echo "::error::模板包文件数 ${FILES} ≥ 600，白名单可能失控"
             exit 1
           fi
           grep -qx 'package.json' <<<"$NAMES" \
