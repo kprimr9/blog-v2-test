@@ -225,9 +225,6 @@ function BlogAppShell({ Component, pageProps, router }: AppPropsWithLayout) {
         ) : (
           <GalleryFaviconLinks activeTheme={activeTheme} />
         )}
-        {!isAdminRoute && !isTweetTheme(activeTheme) && activeTheme !== 'gallery' ? (
-          <link rel="manifest" href="/site.webmanifest" />
-        ) : null}
       </Head>
       <ImageHostAssetBridge />
       <LightSeoMeta

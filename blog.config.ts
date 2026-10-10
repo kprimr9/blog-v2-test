@@ -32,7 +32,7 @@ interface BlogConfig {
   SITE_BEIAN?: {
     ICP?: string
     GONGAN?: string
-  }
+  } | null
   // 是否显示不支持的 block
   SHOW_UNSUPPORTED_BLOCK?: boolean
   // 引用卡片严格模式
@@ -45,9 +45,9 @@ interface BlogConfig {
     POST_URL: string
     // 旧博客停运日期
     STOP_DATE: string
-  }
+  } | null
   // 转载提示
-  REPOST_MESSAGE?:[
+  REPOST_MESSAGE?: Array<
     {
       // 当匹配到此链接显示转载提示 Icon
       URL: string
@@ -58,7 +58,7 @@ interface BlogConfig {
       // 转载提示颜色
       COLOR?: ApiColor
     }
-  ]
+  >
   // 启用评论
   ENABLE_COMMENT?: boolean
   // 评论配置
@@ -70,7 +70,7 @@ interface BlogConfig {
     }
     GISCUS?: {
       // Giscus
-      REPO: `${string}/${string}`
+      REPO: string
       REPOID: string
       CATEGORY: string
       CATEGORYID: string
@@ -119,35 +119,21 @@ const CONFIG: BlogConfig = {
     DOWNLOAD: 'download',
   },
   SITE_START_DATE: '2020',
-  SITE_BEIAN: {
-    ICP: '苏ICP备 2020060340 号',
-    GONGAN: '苏公网安备 32011202000528 号',
-  },
+  SITE_BEIAN: null,
   SHOW_UNSUPPORTED_BLOCK: false,
   STRICT_QUOTE_CARD: true,
-  PAST_BLOG_INFO: {
-    URL: 'https://anzifan-old.vercel.app',
-    POST_URL: 'https://anzifan-old.vercel.app/post',
-    STOP_DATE: '2022-05-07',
-  },
-  REPOST_MESSAGE:[
-    {
-      URL: 'sspai.com',
-      NAME: '少数派',
-      ICON: '/static/sspai.svg',
-      COLOR: 'red',
-    },
-  ],
+  PAST_BLOG_INFO: null,
+  REPOST_MESSAGE: [],
   ENABLE_COMMENT: false,
   COMMENT_CONFIG: {
     GISCUS: {
-      REPO: 'MannyCooper/giscus-discussions',
-      REPOID: 'R_kgDOGtIyjw',
-      CATEGORY: 'Comments',
-      CATEGORYID: 'DIC_kwDOGtIyj84CAxTy',
+      REPO: '',
+      REPOID: '',
+      CATEGORY: '',
+      CATEGORYID: '',
     },
     TWIKOO: {
-      ENVID: 'twikoo-7gjtx7whfd732c11',
+      ENVID: '',
     },
   },
   ENABLE_DRAFT_DIALOG: true,
