@@ -75,7 +75,7 @@ type CenterHttpResult = {
 async function postCenter(
   path: string,
   body: Record<string, unknown>,
-  kind: 'login' | 'refresh' | 'renew' | 'handoff'
+  kind: 'login' | 'refresh' | 'renew' | 'handoff' | 'profile'
 ): Promise<CenterHttpResult> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), CENTER_TIMEOUT_MS)
@@ -476,6 +476,121 @@ export async function callCenterHandoffRedeem(input: {
       'handoff'
     )
     return mapCenterHandoffRedeemResponse(http)
+  } catch {
+    return { ok: false, error: 'unavailable' }
+  }
+}
+
+/** R14-B:中心会员资料结果(独立形状:{ok:true, status, member_no, access_key,
+ *  access_key_mask, qr_data_url, started_at, expires_at};全字段可空=容错展示) */
+export type CenterProfileResult =
+  | {
+      ok: true
+      status: 'active' | 'expired'
+      memberNo: string | null
+      accessKey: string | null
+      accessKeyMask: string | null
+      qrDataUrl: string | null
+      startedAt: string | null
+      expiresAt: string | null
+    }
+  | {
+      ok: false
+      error: 'invalid' | 'revoked' | 'rate_limited' | 'unavailable' | 'bad_response'
+      retryAfterSeconds?: number
+    }
+
+/** profile 独立响应 mapper;429/Retry-After 解析镜像 login 家族;错误族同 renew-ref */
+function mapCenterProfileResponse(http: CenterHttpResult): CenterProfileResult {
+  if (http.status === 429) {
+    const body =
+      http.payload && typeof http.payload === 'object'
+        ? (http.payload as Record<string, unknown>)
+        : null
+    let retryAfterSeconds: number
+    if (
+      body &&
+      typeof body.retry_after_seconds === 'number' &&
+      Number.isFinite(body.retry_after_seconds) &&
+      body.retry_after_seconds > 0
+    ) {
+      retryAfterSeconds = Math.floor(body.retry_after_seconds)
+    } else {
+      const header = Number(http.retryAfterHeader)
+      retryAfterSeconds =
+        Number.isFinite(header) && header > 0 ? Math.floor(header) : 60
+    }
+    return { ok: false, error: 'rate_limited', retryAfterSeconds }
+  }
+
+  if (!http.payload || typeof http.payload !== 'object') {
+    console.error('[member] center profile failed: unavailable')
+    return { ok: false, error: 'unavailable' }
+  }
+  const record = http.payload as Record<string, unknown>
+
+  if (record.ok === true) {
+    if (record.status !== 'active' && record.status !== 'expired') {
+      console.error('[member] center profile failed: bad_response')
+      return { ok: false, error: 'bad_response' }
+    }
+    const memberNo = readNullableString(record, 'member_no')
+    const accessKey = readNullableString(record, 'access_key')
+    const accessKeyMask = readNullableString(record, 'access_key_mask')
+    const qrDataUrl = readNullableString(record, 'qr_data_url')
+    const startedAt = readNullableString(record, 'started_at')
+    const expiresAt = readNullableString(record, 'expires_at')
+    if (
+      memberNo.badType ||
+      accessKey.badType ||
+      accessKeyMask.badType ||
+      qrDataUrl.badType ||
+      startedAt.badType ||
+      expiresAt.badType
+    ) {
+      console.error('[member] center profile failed: bad_response')
+      return { ok: false, error: 'bad_response' }
+    }
+    return {
+      ok: true,
+      status: record.status === 'active' ? 'active' : 'expired',
+      memberNo: memberNo.value,
+      accessKey: accessKey.value,
+      accessKeyMask: accessKeyMask.value,
+      qrDataUrl: qrDataUrl.value,
+      startedAt: startedAt.value,
+      expiresAt: expiresAt.value,
+    }
+  }
+
+  if (record.ok === false) {
+    if (
+      record.error === 'invalid' ||
+      record.error === 'revoked' ||
+      record.error === 'unavailable'
+    ) {
+      return { ok: false, error: record.error }
+    }
+    console.error('[member] center profile failed: bad_response')
+    return { ok: false, error: 'bad_response' }
+  }
+
+  console.error('[member] center profile failed: bad_response')
+  return { ok: false, error: 'bad_response' }
+}
+
+/** R14-B:中心会员资料:POST {base}/api/public/site-member/profile body {passport}
+ * (BLOG 服务端持 cookie 内 passport 直调;日志绝不含 key/passport 原文) */
+export async function callCenterProfile(
+  passport: string
+): Promise<CenterProfileResult> {
+  try {
+    const http = await postCenter(
+      '/api/public/site-member/profile',
+      { passport },
+      'profile'
+    )
+    return mapCenterProfileResponse(http)
   } catch {
     return { ok: false, error: 'unavailable' }
   }

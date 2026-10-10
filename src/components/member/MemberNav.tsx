@@ -32,8 +32,11 @@ import { isTweetDarkTheme, isTweetLightTheme } from '@/src/themes/tweet/tweetThe
  * - member_no 来源:session 响应 > sm_member_no cookie(非 HttpOnly 展示值)> 缺省;
  * - chip 浮窗:createPortal 挂 document.body(祖先可能带 backdrop-blur/transform,
  *   仓内两次 fixed 劫持事故先例;R1 红线,禁止原位渲染);hover 与 click 均可开,
- *   点击外部/Escape 关闭;内容=欢迎行 + 有效期至 + (临期 ≤7 天/已到期)续费 + 退出登录;
+ *   点击外部/Escape 关闭;内容=欢迎行 + 有效期至 + 菜单三项 + 退出登录;
  *   R12-B(2A):w-72 实底 + 欢迎行(26px 头像档) + 实心蓝续费 + 红退出。
+ *   R14-B(Q2=1A):条件续费按钮(临期 ≤7 天/已到期才显示、直达商城)去掉,
+ *   统一常显「续费会员」菜单行 → 站内 /pricing;新增「我的资料」→ /profile、
+ *   「加入创作者」→ 官网新开页(MEMBER_NAV_OFFICIAL_URL)。
  * - R12-B(第6条):登录弹窗 onSuccess = 整页 reload(文章页即时解锁;弹窗在
  *   standard 族已不可达,公告卡弹窗走 StatsWidget 自有 onSuccess)。
  */
@@ -51,6 +54,12 @@ export const MEMBER_NAV_JOIN_LABEL_COMPACT = '会员'
 export const MEMBER_NAV_LOGIN_LABEL = '登录'
 export const MEMBER_NAV_LOGOUT_LABEL = '退出登录'
 export const MEMBER_NAV_RENEW_LABEL = '续费'
+/** R14-B:气泡菜单项文案(我的资料/加入创作者/续费会员) */
+export const MEMBER_NAV_PROFILE_LABEL = '我的资料'
+export const MEMBER_NAV_CREATOR_LABEL = '加入创作者'
+export const MEMBER_NAV_RENEW_MENU_LABEL = '续费会员'
+/** R14-B:官网链接(canonical www 形式;既有三处 apex 存量不动) */
+export const MEMBER_NAV_OFFICIAL_URL = 'https://www.proplus.team/'
 export const MEMBER_NAV_WELCOME_PREFIX = '欢迎会员'
 /** 临期阈值(天):到期或 ≤N 天内到期时浮窗显示「续费」 */
 export const MEMBER_NAV_EXPIRING_SOON_DAYS = 7
@@ -58,8 +67,6 @@ export const MEMBER_NAV_EXPIRING_SOON_DAYS = 7
 /** 展示用 member_no cookie 名(与 memberPassport.MEMBER_NO_COOKIE_NAME 同值;
  *  客户端组件不引 jose 链,靠 tests 交叉断言单一事实源) */
 const MEMBER_NO_COOKIE_LOCAL_NAME = 'sm_member_no'
-
-const MEMBER_RENEW_ERROR_TEXT = '暂时不可用，请稍后重试'
 
 /** 「欢迎会员 {member_no}」;缺省仅「欢迎会员」 */
 export function formatMemberWelcomeLabel(
@@ -154,6 +161,24 @@ const PersonIcon = ({ className = '' }: { className?: string }) => (
   >
     <circle cx="12" cy="8" r="3.5" />
     <path d="M5 20c.8-3.2 3.6-5 7-5s6.2 1.8 7 5" />
+  </svg>
+)
+
+/** R14-B:外链小图标(「加入创作者」行末缀;禁 emoji) */
+const ExternalLinkIcon = ({ className = '' }: { className?: string }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.7"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M14 5h5v5" />
+    <path d="M19 5l-9 9" />
+    <path d="M19 13v5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5" />
   </svg>
 )
 
@@ -382,12 +407,10 @@ function MemberChip({
   const [popoverStyle, setPopoverStyle] = useState<React.CSSProperties>({})
   const [mounted, setMounted] = useState(false)
   const [renewBusy, setRenewBusy] = useState(false)
-  const [renewFailed, setRenewFailed] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
   const chipRef = useRef<HTMLButtonElement | null>(null)
   const popoverRef = useRef<HTMLDivElement | null>(null)
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
   useEffect(() => {
     setMounted(true)
     return () => {
@@ -425,7 +448,6 @@ function MemberChip({
             }
       )
     }
-    setRenewFailed(false)
     setPopoverOpen(true)
   }, [cancelClose])
 
@@ -456,30 +478,6 @@ function MemberChip({
     }
   }, [popoverOpen])
 
-  const membershipConfig = useMemberNavConfig()
-  const requestRenew = useCallback(async () => {
-    const plan = membershipConfig?.plans[0]
-    if (!plan || renewBusy) return
-    setRenewBusy(true)
-    try {
-      const res = await fetch('/api/member/renew-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ days: plan.days }),
-      })
-      const data = await res.json().catch(() => null)
-      if (res.ok && data?.success && typeof data.url === 'string' && data.url) {
-        window.open(data.url, '_blank', 'noopener')
-        return
-      }
-      setRenewFailed(true)
-    } catch {
-      setRenewFailed(true)
-    } finally {
-      setRenewBusy(false)
-    }
-  }, [membershipConfig, renewBusy])
-
   const handleLogout = useCallback(async () => {
     if (loggingOut) return
     setLoggingOut(true)
@@ -495,7 +493,6 @@ function MemberChip({
 
   // R3-3:有效期行永久映射(永久 →「永久有效」;限时 → 前缀+日期;缺失/无效 → 兜底文案)
   const validityText = formatMemberValidityText(config.expiresAt)
-  const showRenew = isMemberExpiringSoon(config.expiresAt)
 
   // 死面登记(R12-B-9):6A 后 standard/standard-mobile 不再渲染 chip,
   // 下方 chipBaseCls/avatarCls 的 standard 分支成为死面,保留不删(最小 diff)
@@ -543,6 +540,14 @@ function MemberChip({
       : panelTheme === 'light'
         ? 'text-[13px] font-bold text-[#1a1a1f]'
         : 'text-[13px] font-bold text-[#1a1a1f] dark:text-[#f2f2f4]'
+  // R14-B:气泡菜单行(中性行,hover 轻微提亮,三态;press 反馈体例延续;
+  // !text 前缀=tweet 主题 a{color:inherit}(0,1,2)压制锚点文字色)
+  const menuRowCls =
+    panelTheme === 'dark'
+      ? 'flex h-9 w-full items-center justify-center gap-1.5 rounded-[9px] text-[12.5px] font-bold !text-[#cfcfd6] transition-colors hover:bg-[#2f2f36] active:scale-[0.98]'
+      : panelTheme === 'light'
+        ? 'flex h-9 w-full items-center justify-center gap-1.5 rounded-[9px] text-[12.5px] font-bold !text-[#5a5a66] transition-colors hover:bg-[#f0f0f3] active:scale-[0.98]'
+        : 'flex h-9 w-full items-center justify-center gap-1.5 rounded-[9px] text-[12.5px] font-bold !text-[#5a5a66] transition-colors hover:bg-[#f0f0f3] active:scale-[0.98] dark:!text-[#cfcfd6] dark:hover:bg-[#2f2f36]'
   // 死面登记(R12-B-9):续费改实心蓝后 primaryButtonCls 不再有消费方,保留不删
   const primaryButtonCls =
     panelTheme === 'dark'
@@ -597,19 +602,24 @@ function MemberChip({
               <p className={`mb-1.5 text-xs leading-relaxed ${mutedCls}`}>
                 {validityText || '会员生效中'}
               </p>
-              {showRenew ? (
-                <button
-                  type="button"
-                  onClick={() => void requestRenew()}
-                  disabled={renewBusy}
-                  className="h-9 w-full rounded-[9px] bg-[#2563eb] text-[12.5px] font-bold text-white transition-colors hover:bg-[#1d4ed8] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {renewBusy ? '跳转中…' : MEMBER_NAV_RENEW_LABEL}
-                </button>
-              ) : null}
-              {renewFailed ? (
-                <p className="text-[11px] text-red-500">{MEMBER_RENEW_ERROR_TEXT}</p>
-              ) : null}
+              {/* R14-B:菜单三项——我的资料→站内 /profile;加入创作者→官网新开页;
+                  续费会员→站内 /pricing(Q2=1A:原条件续费按钮去掉,常显菜单行) */}
+              <Link href="/profile" aria-label={MEMBER_NAV_PROFILE_LABEL} className={menuRowCls}>
+                {MEMBER_NAV_PROFILE_LABEL}
+              </Link>
+              <a
+                href={MEMBER_NAV_OFFICIAL_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={MEMBER_NAV_CREATOR_LABEL}
+                className={menuRowCls}
+              >
+                {MEMBER_NAV_CREATOR_LABEL}
+                <ExternalLinkIcon className="h-3.5 w-3.5 shrink-0" />
+              </a>
+              <Link href="/pricing" aria-label={MEMBER_NAV_RENEW_MENU_LABEL} className={menuRowCls}>
+                {MEMBER_NAV_RENEW_MENU_LABEL}
+              </Link>
               <button
                 type="button"
                 onClick={() => void handleLogout()}

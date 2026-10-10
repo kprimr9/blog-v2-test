@@ -226,7 +226,7 @@ test('R12-B 第2条:tweet chipBaseCls 弹性布局(头像与文字同行居中)'
   assert.ok(chipClsSrc.includes('gap-2'))
 })
 
-test('R12-B 2A:浮窗 w-72 实底+欢迎行+蓝续费/红退出(本文件 /95 零残留)', () => {
+test('R12-B 2A→R14-B:浮窗 w-72 实底+欢迎行+菜单三项/红退出(Q2=1A 蓝续费零残留)', () => {
   assert.ok(navSrc.includes('w-72'))
   assert.ok(navSrc.includes('p-[18px]'))
   assert.ok(navSrc.includes('bg-[#1b1b1e]')) // 深态实底
@@ -237,11 +237,16 @@ test('R12-B 2A:浮窗 w-72 实底+欢迎行+蓝续费/红退出(本文件 /95 �
   // 欢迎行:26px 头像档 + 13px 加粗
   assert.ok(navSrc.includes('h-[26px] w-[26px]'))
   assert.ok(navSrc.includes('text-[13px] font-bold'))
-  // 续费=实心蓝全宽 36px 圆角 9px;退出=红钮
-  assert.ok(navSrc.includes('rounded-[9px] bg-[#2563eb]'))
-  assert.ok(navSrc.includes('hover:bg-[#1d4ed8]'))
+  // R14-B(§6-Q2=1A):条件续费按钮(实心蓝)已去掉,零残留
+  assert.equal(navSrc.includes('rounded-[9px] bg-[#2563eb]'), false)
+  assert.equal(navSrc.includes('hover:bg-[#1d4ed8]'), false)
+  assert.equal(navSrc.includes('/api/member/renew-url'), false)
+  // 退出=红钮(保留)
+  assert.ok(navSrc.includes('rounded-[9px] bg-[#2b2158]') === false) // 深紫面板不属本文件(StatsWidget)
   assert.ok(navSrc.includes('rounded-[9px] bg-[#dc2626]'))
   assert.ok(navSrc.includes('hover:bg-[#b91c1c]'))
+  // R14-B 菜单三项(中性行 h-9 rounded-[9px])
+  assert.ok(navSrc.includes('h-9 w-full items-center justify-center gap-1.5 rounded-[9px]'))
 })
 
 test('R12-B 3A:tweet LoginButton 按钮化(灰阶变量;分支内零硬编码色值)', () => {

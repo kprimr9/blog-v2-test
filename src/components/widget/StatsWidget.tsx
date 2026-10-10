@@ -385,7 +385,12 @@ export const StatsWidget = ({
               <div className="w-full mt-auto pt-4 relative z-20">
                 {/* R12-B(1B):实底深紫信息面板(方案 B;与访客态按钮堆叠同构) */}
                 <div className="rounded-[14px] border border-[rgba(255,255,255,0.12)] bg-[#2b2158] p-3.5">
-                  <div className="mb-3 flex items-center gap-2.5">
+                  {/* R14-B(§6-Q1=C):会员信息行整体可点击 → /profile(轻提亮 hover;按钮区零改动) */}
+                  <Link
+                    href="/profile"
+                    aria-label="我的资料"
+                    className="mb-3 -mx-1.5 -my-1 flex cursor-pointer items-center gap-2.5 rounded-[10px] px-1.5 py-1 transition-colors hover:bg-[rgba(255,255,255,0.08)]"
+                  >
                     <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#8b5cf6] to-[#6d28d9] text-white">
                       <PersonIcon className="h-[17px] w-[17px]" />
                     </span>
@@ -398,7 +403,7 @@ export const StatsWidget = ({
                         {formatMemberValidityText(memberSession.expiresAt) || '会员生效中'}
                       </p>
                     </div>
-                  </div>
+                  </Link>
                   <div className="flex gap-2">
                     {memberShowRenew ? (
                       <button

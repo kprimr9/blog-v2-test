@@ -16,6 +16,7 @@ import { isTransientNotionError } from '../lib/notion/transientErrors'
 import { addSubTitle } from '../lib/util'
 import { buildNavPageSeo } from '@/src/lib/seo/lightSeo'
 import { PricingPageContent } from '@/src/components/member/PricingPageContent'
+import { MemberProfileContent } from '@/src/components/member/MemberProfileContent'
 import { TweetArticlePage } from '@/src/themes/tweet/TweetArticlePage'
 import { TweetShell } from '@/src/themes/tweet/TweetShell'
 import { isTweetTheme } from '@/src/themes/tweet/tweetTheme'
@@ -81,6 +82,11 @@ export const getStaticProps: GetStaticProps = withNavFooterStaticProps(
       slug === 'pricing'
         ? sharedPageStaticProps.props.membershipConfig ?? null
         : null
+    // 站点会员 R14-B:profile slug 同口径(我的资料页;关会员 → null → 普通规则 404)
+    const profileMembership: SiteMembershipConfig | null =
+      slug === 'profile'
+        ? sharedPageStaticProps.props.membershipConfig ?? null
+        : null
     if (systemPageSlugs.has(slug)) {
       return {
         props: JSON.parse(
@@ -102,9 +108,10 @@ export const getStaticProps: GetStaticProps = withNavFooterStaticProps(
 
     if (!page) {
       // 站点会员 R5-B4:pricing 无 Notion 页兜底也补 widgets(tweet 壳 profile 依赖);
-      // R1 门控:仅 pricingMembership 非空才加载(未知 slug/404 不触发 loadHomeWidgets 全链)
+      // R14-B:profile 同口径;R1 门控:仅 pricing/profile 开通时加载
+      // (未知 slug/404 不触发 loadHomeWidgets 全链)
       let widgets: Record<string, unknown> = {}
-      if (pricingMembership) {
+      if (pricingMembership || profileMembership) {
         try {
           widgets = await loadHomeWidgets()
         } catch (widgetError) {
@@ -119,6 +126,7 @@ export const getStaticProps: GetStaticProps = withNavFooterStaticProps(
             blocks: [],
             widgets,
             pricingMembership,
+            profileMembership,
           })
         ),
         revalidate: CONFIG.NEXT_REVALIDATE_SECONDS,
@@ -142,6 +150,30 @@ export const getStaticProps: GetStaticProps = withNavFooterStaticProps(
             blocks: [],
             widgets,
             pricingMembership,
+            profileMembership,
+          })
+        ),
+        revalidate: CONFIG.NEXT_REVALIDATE_SECONDS,
+      }
+    }
+
+    // 站点会员 R14-B:profile 同 pricing(正文零透传,MemberProfileContent 自渲染)
+    if (profileMembership) {
+      let widgets: Record<string, unknown> = {}
+      try {
+        widgets = await loadHomeWidgets()
+      } catch (widgetError) {
+        console.error(`[page/${slug}] profile widgets error:`, widgetError)
+      }
+      return {
+        props: JSON.parse(
+          JSON.stringify({
+            ...sharedPageStaticProps.props,
+            page: page,
+            blocks: [],
+            widgets,
+            pricingMembership,
+            profileMembership,
           })
         ),
         revalidate: CONFIG.NEXT_REVALIDATE_SECONDS,
@@ -193,7 +225,8 @@ const Page: NextPage<{
   siteTitle?: SharedNavFooterStaticProps['props']['siteTitle']
   widgets?: Record<string, unknown>
   pricingMembership?: SiteMembershipConfig | null
-}> = ({ page, blocks, activeTheme, siteTitle, widgets, vendingConfig, vendingEnabled, pricingMembership }) => {
+  profileMembership?: SiteMembershipConfig | null
+}> = ({ page, blocks, activeTheme, siteTitle, widgets, vendingConfig, vendingEnabled, pricingMembership, profileMembership }) => {
   // 站点会员 B4-W6:开通站点 pricing 页独立渲染(R2-B5a:不再透传 Notion blocks,
   // 文案分段由 PricingPageContent 渲染);未开通(pricingMembership=null)不做特殊渲染,
   // 按普通页规则(无页 → 404)
@@ -219,6 +252,36 @@ const Page: NextPage<{
           <LargeTitle className="mb-4" title="会员说明" />
           <div className="px-8 py-4 break-words bg-white rounded-2xl dark:bg-neutral-900">
             <PricingPageContent membership={pricingMembership} />
+          </div>
+        </ContainerLayout>
+      </>
+    )
+  }
+
+  // 站点会员 R14-B:我的资料页(照 pricing:双层壳+无 Notion 页兜底;
+  // 会员模式关 → profileMembership=null → 不特殊渲染,按普通页规则(无页 → 404))
+  if (profileMembership && (!page || page.slug === 'profile')) {
+    if (isTweetTheme(activeTheme)) {
+      const shellWidgets = pickTweetShellWidgets(widgets)
+      return (
+        <TweetShell
+          siteTitle={siteTitle}
+          profile={shellWidgets.profile}
+          vendingConfig={vendingConfig}
+          vendingEnabled={vendingEnabled !== false}
+        >
+          <article className="prose-tweet overflow-hidden break-words">
+            <MemberProfileContent />
+          </article>
+        </TweetShell>
+      )
+    }
+    return (
+      <>
+        <ContainerLayout>
+          <LargeTitle className="mb-4" title="我的资料" />
+          <div className="px-8 py-4 break-words bg-white rounded-2xl dark:bg-neutral-900">
+            <MemberProfileContent />
           </div>
         </ContainerLayout>
       </>
